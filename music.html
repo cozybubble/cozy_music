@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>简易音乐搜索（支持多音乐源）</title>
+    <style>
+        /* 新增：整体布局容器 */
+        .main-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        /* 左侧搜索结果区域 */
+        .left-content {
+            flex: 3;
+            /* 占3/4宽度 */
+        }
+
+        /* 右侧播放器区域 */
+        .right-player {
+            flex: 1;
+            /* 占1/4宽度 */
+            min-width: 300px;
+        }
+
+        #lyrics {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            font-family: Arial, sans-serif;
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        .lyric-line {
+            font-size: 16px;
+            color: #666;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .lyric-line.active {
+            font-size: 20px;
+            font-weight: bold;
+            color: #89e076;
+        }
+
+        .search-area {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        #searchInput {
+            padding: 8px 12px;
+            width: 300px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        #musicSource {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fff;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        .song-card {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            transition: box-shadow 0.3s;
+        }
+
+        .song-card:hover {
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .song-card img {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        .song-info {
+            margin-left: 15px;
+            line-height: 1.6;
+        }
+
+        .song-info button {
+            margin-top: 8px;
+            background: #28a745;
+        }
+
+        .song-info button:hover {
+            background: #1e7e34;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="search-area">
+        <input type="text" id="searchInput" placeholder="输入歌曲名/歌手名/专辑名">
+        <select id="musicSource">
+            <option value="kuwo">酷我音乐</option>
+            <option value="netease">网易云音乐</option>
+            <option value="tencent">QQ音乐</option>
+            <option value="tidal">Tidal</option>
+            <option value="spotify">Spotify</option>
+            <option value="ytmusic">YouTube Music</option>
+            <option value="qobuz">Qobuz</option>
+            <option value="joox">JOOX音乐</option>
+            <option value="deezer">Deezer</option>
+            <option value="migu">咪咕音乐</option>
+            <option value="kugou">酷狗音乐</option>
+            <option value="ximalaya">喜马拉雅</option>
+            <option value="apple">Apple Music</option>
+        </select>
+        <button onclick="searchMusic()">搜索音乐</button>
+    </div>
+
+    <div class="main-container">
+        <div class="left-content">
+            <div id="resultContainer" style="margin-top:20px;"></div>
+        </div>
+        <div class="right-player">
+            <img id="cover" src="" />
+            <div id="song-name">-
+            </div>
+            <div id="author">-
+            </div>
+            <div id="lyrics"></div>
+            <button onclick="togglePlay()">播放/暂停</button>
+            <div id="time">00:00 / 00:00</div>
+            <audio id="myAudio"
+                src="http://localhost:9000?target=http%3A%2F%2Fer.sycdn.kuwo.cn%2F6e3e5b3de27f3694d2b8c33b08ca43a7%2F69303246%2Fresource%2F30106%2Ftrackmedia%2FM500004TXEXY2G2c7C.mp3"></audio>
+        </div>
+    </div>
+
+
+
+    <script>
+        const audio = document.getElementById('myAudio');
+        const timeEl = document.getElementById('time');
+        const lyricsEl = document.getElementById('lyrics')
+        var lyricData;
+
+        audio.addEventListener('timeupdate', () => {
+            highlightCurrentLyric(audio.currentTime);
+            timeEl.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration || 0);
+        });
+
+        function formatTime(s) {
+            if (isNaN(s)) return '00:00';
+            const m = Math.floor(s / 60);
+            const ss = Math.floor(s % 60);
+            return `${m.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}`;
+        }
+
+        function changeAudioSource(newUrl) {
+            audio.src = newUrl;
+            // 可选：加载新音频
+            audio.load();
+            audio.play();
+        }
+
+        async function playSong(songId, name, artist, source, picId, lycId) {
+            const urlApi = `https://music-api.gdstudio.xyz/api.php?types=url&source=${source}&id=${songId}&br=128`;
+            const response = await fetch(urlApi);
+            if (!response.ok) throw new Error('下载链接获取失败');
+
+            const audioData = await response.json();
+            var downloadUrl = '';
+            const songName = document.getElementById('song-name')
+            songName.textContent = name
+            const author = document.getElementById('author')
+            author.textContent = artist
+
+            const cover = document.getElementById('cover')
+            coverUrl = await getRealCoverUrl(source, picId)
+            cover.src = coverUrl
+
+            const lyricUrl = `https://music-api.gdstudio.xyz/api.php?types=lyric&source=${source}&id=${lycId}`
+            const lyricRsp = await fetch(lyricUrl)
+            lyricData = await lyricRsp.json()
+            showLyrics(lyricData.lyric)
+
+            if (audioData && audioData.url) {
+                const proxiedAudioUrl = buildAudioProxyUrl(audioData.url);
+                const preferredAudioUrl = preferHttpsUrl(audioData.url);
+
+                downloadUrl = proxiedAudioUrl || preferredAudioUrl || audioData.url;
+
+            }
+
+            changeAudioSource(downloadUrl);
+        }
+
+        function showLyrics(lyricsStr) {
+            if (!lyricsStr || lyricsStr.trim() === '') {
+                lyricsEl.innerHTML = '<div class="lyric-line">暂无歌词</div>';
+                return;
+            }
+
+            lyricData = parseLyrics(lyricsStr)
+
+            renderLyrics(lyricData)
+        }
+
+        // 高亮当前歌词
+        function highlightCurrentLyric(currentTime) {
+    // 🔒🔒 安全检查：确保 lyricData 是有效数组
+    if (!Array.isArray(lyricData) || lyricData.length === 0) {
+        return;
+    }
+    let currentIndex = -1;
+    for (let i = 0; i < lyricData.length; i++) {
+        if (lyricData[i].time <= currentTime) {
+            currentIndex = i;
+        } else {
+            break;
+        }
+    }
+
+    // 移除所有高亮
+    document.querySelectorAll('.lyric-line').forEach(el => {
+        el.classList.remove('active');
+    });
+
+    // 高亮当前行
+    if (currentIndex >= 0) {
+        const currentLine = document.querySelector(`.lyric-line[data-index="${currentIndex}"]`);
+        if (currentLine) {
+            currentLine.classList.add('active');
+
+            // 计算滚动位置
+            const lyricsEl = document.getElementById("lyrics");
+           
+            const lineTop = currentLine.offsetTop ;
+
+            const containerHeight = lyricsEl.clientHeight;
+            const lineHeight = currentLine.clientHeight;
+
+            // 让当前行居中显示
+            const targetScrollTop = lineTop - (containerHeight / 2) + (lineHeight / 2);
+            
+            lyricsEl.scrollTo({
+                top: targetScrollTop,
+                behavior: "smooth"
+            });
+        }
+    }
+}
+        // 渲染所有歌词
+        function renderLyrics(lyricData) {
+            lyricsEl.innerHTML = '';
+            lyricData.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'lyric-line';
+                div.dataset.index = index;
+                div.textContent = item.text || ' ';
+                lyricsEl.appendChild(div);
+            });
+        }
+
+        // 解析歌词
+        function parseLyrics(lyricText) {
+            const lines = lyricText.trim().split('\n');
+            const parsed = [];
+            const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/g;
+
+            lines.forEach(line => {
+                let match;
+                const times = [];
+                let text = line;
+
+                // 提取所有时间标签
+                while ((match = timeRegex.exec(line)) !== null) {
+                    const min = parseInt(match[1], 10);
+                    const sec = parseInt(match[2], 10);
+                    const ms = parseInt(match[3].padEnd(3, '0'), 10);
+                    const timeInSeconds = min * 60 + sec + ms / 1000;
+                    times.push(timeInSeconds);
+
+                    // 移除时间标签，获取纯文本
+                    text = text.replace(match[0], '').trim();
+                }
+
+                // 为每个时间标签创建歌词条目
+                times.forEach(time => {
+                    parsed.push({ time, text });
+                });
+            });
+
+            return parsed.sort((a, b) => a.time - b.time);
+        }
+
+
+        function togglePlay() {
+            const audio = document.getElementById('myAudio')
+            if (audio.paused) {
+                audio.play()
+            } else {
+                audio.pause()
+            }
+        }
+
+
+        function getRealCoverUrl(source, picId) {
+            const picApiUrl = `https://music-api.gdstudio.xyz/api.php?types=pic&source=${source}&id=${picId}&size=300`;
+            return fetch(picApiUrl)
+                .then(response => {
+                    if (!response.ok) throw new Error('封面图链接获取失败');
+                    return response.json();
+                })
+                .then(picData => {
+                    return picData.url || 'https://via.placeholder.com/100?text=无封面';
+                })
+                .catch(error => {
+
+                    return 'https://via.placeholder.com/100?text=加载失败';
+                });
+        }
+
+        async function searchMusic() {
+            const keyword = document.getElementById('searchInput').value.trim();
+            const selectedSource = document.getElementById('musicSource').value;
+            if (!keyword) {
+                alert('请输入搜索关键词（歌曲名/歌手名/专辑名）');
+                return;
+            }
+
+            const searchApiUrl = `https://music-api.gdstudio.xyz/api.php?types=search&source=${selectedSource}&name=${encodeURIComponent(keyword)}&count=5&pages=1`;
+
+            try {
+                const searchResponse = await fetch(searchApiUrl);
+                if (!searchResponse.ok) throw new Error('搜索请求失败');
+                const songList = await searchResponse.json();
+                const resultContainer = document.getElementById('resultContainer');
+                resultContainer.innerHTML = '';
+
+                if (!songList || songList.length === 0) {
+                    resultContainer.innerHTML = '<p style="color:#666;">未找到相关音乐，请尝试更换关键词或音乐源</p>';
+                    return;
+                }
+
+                for (const song of songList) {
+                    const realCoverUrl = await getRealCoverUrl(song.source, song.pic_id);
+                    const songCard = document.createElement('div');
+                    songCard.className = 'song-card';
+
+                    songCard.innerHTML = `
+                        <img src="${realCoverUrl}" alt="${song.album} 封面">
+                        <div class="song-info">
+                            <p><strong>歌曲名：</strong>${song.name}</p>
+                            <p><strong>歌手：</strong>${song.artist.join(', ')}</p>
+                            <p><strong>专辑：</strong>${song.album}</p>
+                            <p><strong>当前音乐源：</strong>${document.getElementById('musicSource').options[document.getElementById('musicSource').selectedIndex].text}</p>
+                            <button onclick="playSong('${song.id}', '${song.name}', '${song.artist.join(', ')}', '${song.source}', '${song.pic_id}', '${song.lyric_id}')">播放</button>
+                            <button onclick="downloadSongById('${song.id}', '${song.name}', '${song.artist.join(', ')}', ', '${song.source}')">下载</button>
+                        </div>
+                    `;
+                    resultContainer.appendChild(songCard);
+                }
+            } catch (error) {
+                document.getElementById('resultContainer').innerHTML = `<p style="color:#dc3545;">搜索失败：${error.message}</p>`;
+            }
+        }
+
+        // async function downloadSong(source, songId, songName) {
+        //     try {
+        //         // 获取音乐文件的URL
+        //         const urlApi = `https://music-api.gdstudio.xyz/api.php?types=url&source=${source}&id=${songId}&br=128`;
+        //         const response = await fetch(urlApi);
+        //         if (!response.ok) throw new Error('下载链接获取失败');
+        //         const data = await response.json();
+
+        //         // 假设data.url是音乐文件的直接链接
+        //         const musicUrl = data.url;
+
+        //         // 创建一个临时的a标签，设置href为音乐文件的URL，并触发点击
+        //         const a = document.createElement('a');
+        //         a.href = musicUrl;
+        //         a.download = songName + '.mp3'; // 设置下载文件名
+        //         document.body.appendChild(a);
+        //         a.click();
+        //         document.body.removeChild(a);
+        //     } catch (err) {
+        //         alert('下载失败: ' + err.message);
+        //     }
+        // }
+
+
+        async function downloadSongById(songId, songName, artist) {
+            const song = {
+                id: songId,
+                name: songName,
+                artist: artist.split(', ')
+            };
+
+            // 调用原来的下载逻辑
+            await downloadSong(song);
+        }
+
+        async function downloadSong(song, quality = "320") {
+            try {
+                const urlApi = `https://music-api.gdstudio.xyz/api.php?types=url&source=kuwo&id=${song.id}&br=128`;
+                const response = await fetch(urlApi);
+                if (!response.ok) throw new Error('下载链接获取失败');
+
+                const audioData = await response.json();
+
+                if (audioData && audioData.url) {
+                    const proxiedAudioUrl = buildAudioProxyUrl(audioData.url);
+                    const preferredAudioUrl = preferHttpsUrl(audioData.url);
+
+                    const downloadUrl = proxiedAudioUrl || preferredAudioUrl || audioData.url;
+
+
+
+                    const link = document.createElement("a");
+                    link.href = downloadUrl;
+                    const preferredExtension =
+                        quality === "999" ? "flac" : quality === "740" ? "ape" : "mp3";
+                    const fileExtension = (() => {
+                        try {
+                            const url = new URL(audioData.url);
+                            const pathname = url.pathname || "";
+                            const match = pathname.match(/\.([a-z0-9]+)$/i);
+                            if (match) {
+                                return match[1];
+                            }
+                        } catch (error) {
+
+                        }
+                        return preferredExtension;
+                    })();
+                    link.download = `${song.name} - ${Array.isArray(song.artist) ? song.artist.join(", ") : song.artist}.${fileExtension}`;
+                    link.target = "_blank";
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                } else {
+                    throw new Error("无法获取下载地址");
+                }
+            } catch (error) {
+
+            }
+        }
+
+
+        function buildAudioProxyUrl(url) {
+            if (!url || typeof url !== "string") return url;
+
+            try {
+                const parsedUrl = new URL(url, window.location.href);
+                if (parsedUrl.protocol === "https:") {
+                    return parsedUrl.toString();
+                }
+
+                if (parsedUrl.protocol === "http:" && /(^|\.)kuwo\.cn$/i.test(parsedUrl.hostname)) {
+                    return `http://localhost:9000?target=${encodeURIComponent(parsedUrl.toString())}`;
+                }
+
+                return parsedUrl.toString();
+            } catch (error) {
+
+                return url;
+            }
+        }
+
+        function preferHttpsUrl(url) {
+            if (!url || typeof url !== "string") return url;
+
+            try {
+                const parsedUrl = new URL(url, window.location.href);
+                if (parsedUrl.protocol === "http:" && window.location.protocol === "https:") {
+                    parsedUrl.protocol = "https:";
+                    return parsedUrl.toString();
+                }
+                return parsedUrl.toString();
+            } catch (error) {
+                if (window.location.protocol === "https:" && url.startsWith("http://")) {
+                    return "https://" + url.substring("http://".length);
+                }
+                return url;
+            }
+        }
+    </script>
+</body>
+</html>
