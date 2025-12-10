@@ -1,11 +1,100 @@
 const audio = document.getElementById('myAudio');
 const timeEl = document.getElementById('time');
 const lyricsEl = document.getElementById('lyrics')
+const progressBar = document.getElementById('progress-bar');
+const progress = document.getElementById('progress');
+const progressHandle = document.getElementById('progress-handle');
 var lyricData;
+var isDragging = false;
+let pendingTime = null; // 用于存储拖动结束后要跳转的时间
 
-audio.addEventListener('timeupdate', () => {
-    highlightCurrentLyric(audio.currentTime);
-    timeEl.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration || 0);
+// 初始化进度条事件监听
+function initProgressBar() {
+    // 点击进度条跳转
+    progressBar.addEventListener('click', (e) => {
+        if (audio.duration) {
+            const rect = progressBar.getBoundingClientRect();
+            const percent = (e.clientX - rect.left) / rect.width;
+            audio.currentTime = percent * audio.duration;
+        }
+    });
+
+    // 拖动进度条
+    progressHandle.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (isDragging && audio.duration) {
+            const rect = progressBar.getBoundingClientRect();
+            let percent = (e.clientX - rect.left) / rect.width;
+            percent = Math.max(0, Math.min(1, percent)); // 限制在 0-1 范围内
+
+            // 🚫 不再设置 audio.currentTime
+            // audio.currentTime = percent * audio.duration;
+
+            // ✅ 只更新 UI：progress 宽度和 handle 位置
+            const percentPercent = percent * 100;
+            progress.style.width = percentPercent + '%';
+            progressHandle.style.left = percentPercent + '%';
+
+            // 🧠 可选：保存当前拖动位置对应的时间（但不立即使用）
+            pendingTime = percent * audio.duration;
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isDragging && pendingTime !== null && audio.duration) {
+            // 🎵 真正设置音频时间
+            audio.currentTime = pendingTime;
+
+            // 🧹 清理状态
+            isDragging = false;
+            pendingTime = null;
+        } else {
+            isDragging = false;
+        }
+    });
+
+    document.addEventListener('touchend', () => {
+        if (isDragging && pendingTime !== null && audio.duration) {
+            audio.currentTime = pendingTime;
+
+            isDragging = false;
+            pendingTime = null;
+        } else {
+            isDragging = false;
+        }
+    });
+
+    document.addEventListener('touchmove', (e) => {
+        if (isDragging) {
+            const rect = progressBar.getBoundingClientRect();
+            let clientX = e.touches[0].clientX;
+            let percent = (clientX - rect.left) / rect.width;
+            percent = Math.max(0, Math.min(1, percent));
+
+            // 🚫 不设置 audio.currentTime
+            // audio.currentTime = percent * audio.duration;
+
+            // ✅ 只更新 UI
+            const percentPercent = percent * 100;
+            progress.style.width = percentPercent + '%';
+            progressHandle.style.left = percentPercent + '%';
+
+            // 🧠 可选：记录拖动的目标时间
+            pendingTime = percent * audio.duration;
+        }
+    });
+
+    document.addEventListener('touchend', () => {
+        isDragging = false;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initProgressBar();
 });
 
 function formatTime(s) {
@@ -67,7 +156,6 @@ function showLyrics(lyricsStr) {
 
 // 高亮当前歌词
 function highlightCurrentLyric(currentTime) {
-    // 🔒🔒 安全检查：确保 lyricData 是有效数组
     if (!Array.isArray(lyricData) || lyricData.length === 0) {
         return;
     }
@@ -344,3 +432,40 @@ function preferHttpsUrl(url) {
         return url;
     }
 }
+
+// 更新进度条显示
+function updateProgressBar() {
+    if (audio.duration && !isDragging) {
+        const percent = audio.currentTime / audio.duration;
+        progress.style.width = (percent * 100) + '%';
+        progressHandle.style.left = (percent * 100) + '%';
+    }
+}
+
+audio.addEventListener('loadedmetadata', () => {
+    updateProgressBar();
+});
+
+function changeAudioSource(newUrl) {
+    audio.src = newUrl;
+    // 重置进度条
+    progress.style.width = '0%';
+    progressHandle.style.left = '0%';
+    // 可选：加载新音频
+    audio.load();
+    audio.play();
+}
+
+audio.addEventListener('ended', () => {
+    // 歌曲结束时重置进度条
+    setTimeout(() => {
+        progress.style.width = '0%';
+        progressHandle.style.left = '0%';
+    }, 100);
+});
+
+audio.addEventListener('timeupdate', () => {
+    highlightCurrentLyric(audio.currentTime);
+    timeEl.textContent = formatTime(audio.currentTime) + ' / ' + formatTime(audio.duration || 0);
+    updateProgressBar();
+});

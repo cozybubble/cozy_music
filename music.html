@@ -40,6 +40,13 @@
             </div>
             <div id="lyrics"></div>
             <button onclick="togglePlay()">播放/暂停</button>
+            <!-- 添加进度条 -->
+            <div class="progress-container">
+                <div id="progress-bar" class="progress-bar">
+                    <div id="progress" class="progress"></div>
+                    <div id="progress-handle" class="progress-handle"></div>
+                </div>
+            </div>
             <div id="time">00:00 / 00:00</div>
             <audio id="myAudio"
                 src="http://localhost:9000?target=http%3A%2F%2Fer.sycdn.kuwo.cn%2F6e3e5b3de27f3694d2b8c33b08ca43a7%2F69303246%2Fresource%2F30106%2Ftrackmedia%2FM500004TXEXY2G2c7C.mp3"></audio>
