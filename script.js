@@ -303,7 +303,7 @@ async function searchMusic() {
                             <p><strong>专辑：</strong>${song.album}</p>
                             <p><strong>当前音乐源：</strong>${document.getElementById('musicSource').options[document.getElementById('musicSource').selectedIndex].text}</p>
                             <button onclick="playSong('${song.id}', '${song.name}', '${song.artist.join(', ')}', '${song.source}', '${song.pic_id}', '${song.lyric_id}')">播放</button>
-                            <button onclick="downloadSongById('${song.id}', '${song.name}', '${song.artist.join(', ')}', ', '${song.source}')">下载</button>
+                            <button onclick="downloadSongById('${song.id}', '${song.name}', '${song.artist.join(', ')}', '${song.source}')">下载</button>
                         </div>
                     `;
             resultContainer.appendChild(songCard);
@@ -337,11 +337,12 @@ async function searchMusic() {
 // }
 
 
-async function downloadSongById(songId, songName, artist) {
+async function downloadSongById(songId, songName, artist, source) {
     const song = {
         id: songId,
         name: songName,
-        artist: artist.split(', ')
+        artist: artist.split(', '),
+        source: source
     };
 
     // 调用原来的下载逻辑
@@ -350,7 +351,7 @@ async function downloadSongById(songId, songName, artist) {
 
 async function downloadSong(song, quality = "320") {
     try {
-        const urlApi = `https://music-api.gdstudio.xyz/api.php?types=url&source=kuwo&id=${song.id}&br=128`;
+        const urlApi = `https://music-api.gdstudio.xyz/api.php?types=url&source=${song.source}&id=${song.id}&br=128`;
         const response = await fetch(urlApi);
         if (!response.ok) throw new Error('下载链接获取失败');
 
@@ -360,9 +361,17 @@ async function downloadSong(song, quality = "320") {
             const proxiedAudioUrl = buildAudioProxyUrl(audioData.url);
             const preferredAudioUrl = preferHttpsUrl(audioData.url);
 
-            const downloadUrl = proxiedAudioUrl || preferredAudioUrl || audioData.url;
-
-
+            let downloadUrl = proxiedAudioUrl || preferredAudioUrl || audioData.url;
+            if (downloadUrl == audioData.url) {
+                // 第二步：用 downloadUrl 重新 fetch 音频内容
+                const audioResponse = await fetch(downloadUrl);
+                if (!audioResponse.ok) {
+                    throw new Error("Failed to fetch audio file");
+                }
+                const blob = await audioResponse.blob();
+                downloadUrl = URL.createObjectURL(blob);
+                console.log(downloadUrl)
+            }
 
             const link = document.createElement("a");
             link.href = downloadUrl;
@@ -382,7 +391,6 @@ async function downloadSong(song, quality = "320") {
                 return preferredExtension;
             })();
             link.download = `${song.name} - ${Array.isArray(song.artist) ? song.artist.join(", ") : song.artist}.${fileExtension}`;
-            link.target = "_blank";
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -390,7 +398,7 @@ async function downloadSong(song, quality = "320") {
             throw new Error("无法获取下载地址");
         }
     } catch (error) {
-
+        console.log(error)
     }
 }
 

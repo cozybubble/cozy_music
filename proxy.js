@@ -245,5 +245,4 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`✅ Music server running at http://localhost:${PORT}`);
   console.log(`   - Static files served from: ${STATIC_DIR}`);
-  console.log(`   - Proxy endpoint: ?target=<kuwo-url>`);
 });
